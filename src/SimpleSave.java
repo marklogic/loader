@@ -45,19 +45,48 @@ public class SimpleSave {
     }
   }
 
+  private static void save(InputStream inputStream, String uri) {
+    long start = System.currentTimeMillis();
+    try {
+      FileOutputStream fileOutputStream = new FileOutputStream(uri);
+      byte[] buf = new byte[BUFSIZE];
+      int count = 0;
+      while ((count = inputStream.read(buf)) != -1) {
+        fileOutputStream.write(buf, 0, count);
+      }
+      fileOutputStream.flush();
+      fileOutputStream.close();
+      long end = System.currentTimeMillis();
+      System.out.println("" + (end-start) + " ms.");
+    }
+    catch (Exception e) {
+      System.err.println("Problem saving to the URI " + uri);
+      e.printStackTrace(System.err);
+    }
+  }
+
   private static void save(String directory) {
     XDBCStatement stmt = null;
     XDBCResultSequence result = null;
     try {
-      String query = "for $i in input() return (base-uri($i), $i)";
+      String query = "for $i in input() return (base-uri($i), $i/node())";
       stmt = con.createStatement();
       result = stmt.executeQuery(query);
       while (result.hasNext()) {
         result.next();
         String baseuri = result.get_String();
-        Reader reader = result.nextReader();
         String uri = directory + System.getProperty("file.separator") + escape(baseuri);
-        save(reader, uri);
+        result.next();
+        switch (result.getItemType()) {
+          case XDBCResultSequence.XDBC_Text:
+          case XDBCResultSequence.XDBC_Binary:
+            InputStream is = result.getInputStream();
+            save(is,uri);
+            break;
+          default:
+            Reader reader = result.getReader();
+            save(reader,uri);
+        }
       }
     }
     catch (XDBCException e) {
