@@ -23,14 +23,10 @@ public class SimpleLoad {
     s = s.replaceAll("%5c", "\\");
     s = s.replaceAll("%3a", ":");
     s = s.replaceAll("%3f", "?");
-    //buffer.replace( "http_", "http:" );
-    //buffer.replace( "%3f", "?" );
-    //buffer.replace( "%3a", ":" );
     return s;
   }
 
   private static void load(InputStream content, String uri) {
-    System.out.print("Loading to " + uri + "...");
     long start = System.currentTimeMillis();
     try {
       XDMPDocInsertStream insert = con.openDocInsertStream(uri);
@@ -41,26 +37,47 @@ public class SimpleLoad {
       }
       insert.commit();
       long end = System.currentTimeMillis();
-      System.out.println(" " + (end-start) + " ms.");
+      System.out.println("" + (end-start) + " ms.");
     }
     catch (Exception e) {
-      System.err.println("Problem loading to the URI " + uri + "...");
+      System.err.println("Problem loading to the URI " + uri);
       e.printStackTrace(System.err);
     }
   }
 
   private static void load(String filename, String uri) {
-    InputStream stream = null;
-    try {
-      stream = new FileInputStream(filename);
-      load(stream, uri);
+    if (filename.toLowerCase().endsWith(".zip")) {
+      System.out.println("Loading from ZIP " + filename + "... ");
+      try {
+        ZipFile zip = new ZipFile(filename);
+        Enumeration entries = zip.entries();
+        while (entries.hasMoreElements()) {
+          ZipEntry entry = (ZipEntry) entries.nextElement();
+          String zipuri = unescape(entry.getName());
+          System.out.print("  Loading " + zipuri + "... ");
+          InputStream stream = zip.getInputStream(entry);
+          load(stream, zipuri);
+        }
+      }
+      catch (IOException e) {
+        System.err.println("Problem reading from ZIP " + filename);
+        e.printStackTrace(System.err);
+      }
     }
-    catch (IOException e) {
-      System.err.println("Problem loading " + filename + "...");
-      e.printStackTrace(System.err);
-    }
-    finally {
-      if (stream != null) try { stream.close(); } catch (IOException e) { }
+    else {
+      InputStream stream = null;
+      try {
+        System.out.print("Loading " + uri + "... ");
+        stream = new FileInputStream(filename);
+        load(stream, uri);
+      }
+      catch (IOException e) {
+        System.err.println("Problem loading from file " + filename);
+        e.printStackTrace(System.err);
+      }
+      finally {
+        if (stream != null) try { stream.close(); } catch (IOException e) { }
+      }
     }
   }
 
@@ -97,26 +114,11 @@ public class SimpleLoad {
 
     File target = new File(path);
     if (target.isDirectory()) {
+      // Load every file directly under the directory
       String[] targetlist = target.list();
       for (int i = 0; i < targetlist.length; i++) {
         String file = path + System.getProperty("file.separator") + targetlist[i];
         load(file, unescape(targetlist[i]));
-      }
-    }
-    else if (path.toLowerCase().endsWith(".zip")) {
-      try {
-      ZipFile zip = new ZipFile(path);
-      Enumeration entries = zip.entries();
-      while (entries.hasMoreElements()) {
-        ZipEntry entry = (ZipEntry) entries.nextElement();
-        String uri = unescape(entry.getName());
-        InputStream stream = zip.getInputStream(entry);
-        load(stream, uri);
-      }
-      }
-      catch (IOException e) {
-        System.err.println("Problem reading from ZIP " + path);
-        e.printStackTrace(System.err);
       }
     }
     else {
