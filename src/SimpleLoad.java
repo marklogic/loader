@@ -15,7 +15,7 @@ public class SimpleLoad {
   static XDMPConnection con;
 
   private static void printUsage() {
-    System.err.println("SimpleLoad usage: java SimpleLoad <host> <port> <username> <password> <directory-or-zip>");
+    System.err.println("SimpleLoad usage: java SimpleLoad <host> <port> <username> <password> <dir-file-or-zip>");
   }
 
   private static String unescape(String s) {
