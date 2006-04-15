@@ -1,0 +1,50 @@
+This is a version of Tidy based on jtidy-04aug2000r7-dev with a couple code
+tweaks.
+
+The first tweak makes Tidy recognize any tag name during HTML cleanup.
+Without this tweak, Tidy permits only HTML tags and one single unexpected tag
+makes a page unreadable.
+
+The change is in TagTable's findTag():
+
+  if ( node.element != null ) {
+      np = lookup( node.element );
+      if ( np != null ) {
+          node.tag = np;
+          return true;
+      }
+      else {  // else clause added by Jason Hunter
+          node.tag = xmlTags;
+          return true;
+      }
+  }
+
+The second tweak suppresses Tidy's annoying and ad nausea repeated output
+message "OutImpl.newline: java.net.SocketException: Software caused connection
+abort: socket write error" when there's a problem writing to the database.
+The new version throws a RuntimeException.
+
+In OutImpl's outc() and newline():
+
+  try {
+      this.out.write(nlBytes);
+      this.out.flush();
+  }
+  catch (IOException e) {
+      // Changed from a print to a propagate by Jason Hunter
+      //System.err.println("OutImpl.newline: " + e.toString());
+      throw new RuntimeException(e);
+  }
+
+The third tweak is that Tidy is now built with its debug flag turned on so I
+can get better stack traces.  I can turn that off later.
+
+The fourth tweak is that Tidy no longer flushes after every line.  In the same
+OutImpl block as above:
+
+  try {
+      this.out.write(nlBytes);
+      // Flush removed by Jason Hunter due to performance concerns
+      //this.out.flush();
+  }
+

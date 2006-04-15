@@ -2,11 +2,13 @@ import java.io.*;
 import java.net.Authenticator;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipEntry;
-import java.util.Enumeration;
+import java.util.*;
 
 import com.marklogic.xdbc.*;
 import com.marklogic.xdmp.*;
 import com.marklogic.xdmp.util.*;
+import org.w3c.tidy.*;
+import org.w3c.dom.*;
 
 public class SimpleLoad {
 
@@ -28,14 +30,48 @@ public class SimpleLoad {
 
   private static void load(InputStream content, String uri) {
     long start = System.currentTimeMillis();
+
     try {
-      XDMPDocInsertStream insert = con.openDocInsertStream(uri);
-      int count;
-      byte[] buf = new byte[BUFSIZE];
-      while ((count = content.read(buf)) >= 0) {
-        insert.write(buf, 0, count);
+      // HTML input files need to be tidied
+      if (uri.toLowerCase().endsWith(".htm") ||
+              uri.toLowerCase().endsWith(".html")) {
+        // Force document type to XML
+        XDMPDocInsertStream insert = con.openDocInsertStream(
+                uri, Locale.getDefault(), true, null, null, 0, null,
+                XDMPDocInsertStream.XDMP_ERROR_CORRECTION_FULL, null,
+                XDMPDocInsertStream.XDMP_DOC_FORMAT_XML, "en");
+        System.out.print("Tidying... ");
+        Tidy tidy = new Tidy();
+        tidy.setXmlOut(true);
+        tidy.setShowWarnings(false);
+        tidy.setQuiet(true);
+        tidy.setFixBackslash(true);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PrintWriter catcher = new PrintWriter(baos);
+        tidy.setErrout(catcher);
+        Document doc = tidy.parseDOM(content, null);
+        tidy.setCharEncoding(Configuration.UTF8);  // helps?
+        tidy.pprint(doc, insert);
+        insert.flush();
+        insert.commit();
+        if (tidy.getParseErrors() != 0) {
+          System.err.println("Tidy parse problem on uri: " + uri);
+          catcher.flush();
+          System.err.println(baos.toString());
+        }
       }
-      insert.commit();
+
+      // Other files just go straight in
+      else {
+        XDMPDocInsertStream insert = con.openDocInsertStream(uri);
+        int count;
+        byte[] buf = new byte[BUFSIZE];
+        while ((count = content.read(buf)) >= 0) {
+          insert.write(buf, 0, count);
+        }
+        insert.commit();
+      }
+
       long end = System.currentTimeMillis();
       System.out.println("" + (end-start) + " ms.");
     }
@@ -68,7 +104,7 @@ public class SimpleLoad {
       InputStream stream = null;
       try {
         System.out.print("Loading " + uri + "... ");
-        stream = new FileInputStream(filename);
+        stream = new BufferedInputStream(new FileInputStream(filename));
         load(stream, uri);
       }
       catch (IOException e) {
@@ -115,11 +151,7 @@ public class SimpleLoad {
     File target = new File(path);
     if (target.isDirectory()) {
       // Load every file directly under the directory
-      String[] targetlist = target.list();
-      for (int i = 0; i < targetlist.length; i++) {
-        String file = path + System.getProperty("file.separator") + targetlist[i];
-        load(file, unescape(targetlist[i]));
-      }
+      loadDirectory(target, "");  // 2nd arg is prepend text
     }
     else {
       // Load a single file
@@ -128,6 +160,20 @@ public class SimpleLoad {
 
     if (con != null) {
       try { con.close(); } catch (Exception e) { }
+    }
+  }
+
+  private static void loadDirectory(File target, String prepend) {
+    String[] targetlist = target.list();
+    for (int i = 0; i < targetlist.length; i++) {
+      String file = target + System.getProperty("file.separator") + targetlist[i];
+      File innerTarget = new File(file);
+      if (innerTarget.isDirectory()) {
+        loadDirectory(innerTarget, prepend + targetlist[i] + "/");
+      }
+      else {
+        load(file, unescape(prepend + targetlist[i]));
+      }
     }
   }
 }
